@@ -101,14 +101,14 @@ def login(request):
                 logger.info("Creating database query")
                 # START VULN CODE
                 sqlQuery = "select username, password, password_hint, created_at, last_login, \
-                            real_name, blab_name from users where username='" + username + "' \
-                            and password='" + hashlib.md5(password.encode('utf-8')).hexdigest() + "';"
+                            real_name, blab_name from users where username=%s \
+                            and password=%s;"
                 logger.info(sqlQuery)
 
                 parsed = sqlparse.parse(sqlQuery)[0]
                 logger.info("Attempted login with username and password: " + parsed[8].value)
 
-                cursor.execute(sqlQuery)
+                cursor.execute(sqlQuery, (username, hashlib.md5(password.encode('utf-8')).hexdigest()))
                 # END VULN CODE
                 # GOOD CODE
                 # sqlQuery = "select username, password, password_hint, created_at, last_login, \
@@ -181,9 +181,9 @@ def showPasswordHint(request):
     try:
         logger.info("Creating the Database connection")
         with connection.cursor() as cursor:
-            sql = "SELECT password_hint FROM users WHERE username = '" + username + "'"
+            sql = "SELECT password_hint FROM users WHERE username = %s"
             logger.info(sql)
-            cursor.execute(sql)
+            cursor.execute(sql, (username,))
             row = cursor.fetchone()
             
             if (row):
@@ -256,9 +256,9 @@ def processTotp(request):
         
         with connection.cursor() as cursor:
         
-            sql = "SELECT totp_secret FROM users WHERE username = '" + username + "'"
+            sql = "SELECT totp_secret FROM users WHERE username = %s"
             logger.info(sql)
-            cursor.execute(sql)
+            cursor.execute(sql, (username,))
 
             result = cursor.fetchone()
             if result:
@@ -338,8 +338,8 @@ def processRegister(request):
     logger.info("Creating the Database connection")
     try:
         with connection.cursor() as cursor:
-            sqlQuery = "SELECT username FROM users WHERE username = '" + username + "'"
-            cursor.execute(sqlQuery)
+            sqlQuery = "SELECT username FROM users WHERE username = %s"
+            cursor.execute(sqlQuery, (username,))
             row = cursor.fetchone()
             if (row):
                 request.error = "Username '" + username + "' already exists!"
@@ -508,9 +508,9 @@ def showProfile(request):
             events = []
 
             # START EXAMPLE VULNERABILITY 
-            sqlMyEvents = "select event from users_history where blabber=\"" + username + "\" ORDER BY eventid DESC; "
+            sqlMyEvents = "select event from users_history where blabber=%s ORDER BY eventid DESC; "
             logger.info(sqlMyEvents)
-            cursor.execute(sqlMyEvents)
+            cursor.execute(sqlMyEvents, (username,))
             userHistoryResult = cursor.fetchall()
             # END EXAMPLE VULNERABILITY 
 
@@ -729,8 +729,8 @@ def usernameExists(username):
         logger.info("Getting Database connection")
         with connection.cursor() as cursor:
             logger.info("Preparing the duplicate username check Prepared Statement")
-            sqlStatement = "SELECT username FROM users WHERE username='%s'"
-            cursor.execute(sqlStatement % (username,))
+            sqlStatement = "SELECT username FROM users WHERE username=%s"
+            cursor.execute(sqlStatement, (username,))
             result = cursor.fetchone()
             if not result:
                 # username does not exist
@@ -761,17 +761,17 @@ def updateUsername(oldUsername, newUsername):
 
                 # Update all references to this user
                 sqlStrQueries = [
-                    "UPDATE users SET username='%s' WHERE username='%s'",
-                    "UPDATE blabs SET blabber='%s' WHERE blabber='%s'",
-                    "UPDATE comments SET blabber='%s' WHERE blabber='%s'",
-                    "UPDATE listeners SET blabber='%s' WHERE blabber='%s'",
-                    "UPDATE listeners SET listener='%s' WHERE listener='%s'",
-                    "UPDATE users_history SET blabber='%s' WHERE blabber='%s'" ]
+                    "UPDATE users SET username=%s WHERE username=%s",
+                    "UPDATE blabs SET blabber=%s WHERE blabber=%s",
+                    "UPDATE comments SET blabber=%s WHERE blabber=%s",
+                    "UPDATE listeners SET blabber=%s WHERE blabber=%s",
+                    "UPDATE listeners SET listener=%s WHERE listener=%s",
+                    "UPDATE users_history SET blabber=%s WHERE blabber=%s" ]
         
                 # Execute updates as part of a batch transaction
                 # This will roll back all changes if one query fails
                 for query in sqlStrQueries:
-                    cursor.execute(query % (newUsername,oldUsername))
+                    cursor.execute(query, (newUsername, oldUsername))
 
 
         # Rename the user profile image to match new username
