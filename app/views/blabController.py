@@ -30,7 +30,7 @@ sqlBlabsByMe = ("SELECT blabs.content, blabs.timestamp, COUNT(comments.blabber),
 sqlBlabsForMe = ("SELECT users.username, users.blab_name, blabs.content, blabs.timestamp, COUNT(comments.blabber), blabs.blabid "
                 "FROM blabs INNER JOIN users ON blabs.blabber = users.username INNER JOIN listeners ON blabs.blabber = listeners.blabber "
                 "LEFT JOIN comments ON blabs.blabid = comments.blabid WHERE listeners.listener = %s "
-                "GROUP BY blabs.blabid ORDER BY blabs.timestamp DESC LIMIT {} OFFSET {};")
+                "GROUP BY blabs.blabid ORDER BY blabs.timestamp DESC LIMIT %s OFFSET %s;")
 
 #
 # handles the getting and updating of information from feed page
@@ -48,8 +48,7 @@ def feed(request):
             with connection.cursor() as cursor:
 
                 logger.info("Executing query to get all 'Blabs for me'")
-                blabsForMe = sqlBlabsForMe.format(10, 0)
-                cursor.execute(blabsForMe, (username,))
+                cursor.execute(sqlBlabsForMe, (username, 10, 0))
                 blabsForMeResults = cursor.fetchall()
 
                 feedBlabs = []
@@ -159,13 +158,12 @@ def morefeed(request):
         with connection.cursor() as cursor:
 
             logger.info("Executing query to see more Blabs")
-            blabsForMe = sqlBlabsForMe.format(len, cnt)
-            cursor.execute(blabsForMe, (username,))
+            cursor.execute(sqlBlabsForMe, (username, len, cnt))
             results = cursor.fetchall()
             ret = ""
             for blab in results:
                 ret += template.format(username = escape(blab[0]), content = escape(blab[2]), blab_name = escape(blab[1]),
-                                       timestamp = blab[3].strftime("%b %d %Y"), blabid = blab[5], count = blab[4])    
+                                       timestamp = blab[3].strftime("%b %d %Y"), blabid = escape(str(blab[5])), count = escape(str(blab[4])))
     except ConnectionError as ce:
         logger.error("Unexpected connection error", ce)
     except Exception as e:
@@ -276,6 +274,18 @@ def blabbers(request):
         sort = request.GET.get('sort')
         if (sort is None or not sort):
             sort = "blab_name ASC"
+
+        # Allowlist for sort parameter to prevent SQL injection
+        allowed_sorts = {
+            "blab_name ASC": "blab_name ASC",
+            "blab_name DESC": "blab_name DESC",
+            "username ASC": "username ASC",
+            "username DESC": "username DESC",
+            "created_at ASC": "created_at ASC",
+            "created_at DESC": "created_at DESC"
+        }
+        sort = allowed_sorts.get(sort, "blab_name ASC")
+
         response = redirect('feed')
         logger.info("Showing Blabbers")
 
