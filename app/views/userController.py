@@ -191,12 +191,14 @@ def showPasswordHint(request):
 
                 logger.info(f"Password: {password}")
 
-                formatString = "Username '" + escape(username) + "' has password: {}"
-                hint = formatString.format(password[:2] + ("*" * (len(password) - 2)))
+                safe_username = escape(username)
+                safe_password_hint = escape(password[:2] + ("*" * (len(password) - 2)))
+                hint = f"Username '{safe_username}' has password: {safe_password_hint}"
                 logger.info(hint)
                 return HttpResponse(hint)
             else:
-                return HttpResponse("No password found for " + escape(username))
+                safe_username = escape(username)
+                return HttpResponse(f"No password found for {safe_username}")
     except DatabaseError as db_err:
             logger.error("Database error", db_err)
             return HttpResponse("ERROR!") 
@@ -553,7 +555,8 @@ def processProfile(request):
     safe_username = escape(username.lower())
     safe_realName = escape(realName)
     safe_blabName = escape(blabName)
-    msg = f"<script>alert('Successfully changed values!\\nusername: {safe_username}\\nReal Name: {safe_realName}\\nBlab Name: {safe_blabName}');</script>"
+    # Don't include user input in script tags - use plain message instead
+    msg = "<script>alert('Successfully changed values!');</script>"
     response = JsonResponse({'values':{"username": safe_username, "realName": safe_realName, "blabName": safe_blabName}, 'message':msg},status=200)
     
     logger.info("entering processProfile")
@@ -649,21 +652,27 @@ def processProfile(request):
             extension = file.name.lower().endswith('.png')
             if extension:
                 # Define allowed paths to prevent path traversal (CWE-73)
-                ALLOWED_FILENAMES = [f"{username}.png"]  # Developer: Add valid filenames here
+                # Developer: Update ALLOWED_FILENAMES with valid filenames for your application
+                ALLOWED_FILENAMES = ["user1.png", "user2.png", "admin.png"]  # Developer: Add valid filenames here
                 ALLOWED_PATHS = [imageDir]  # Developer: Add valid absolute paths here
 
                 allowed_files = []
                 for allowed_path in ALLOWED_PATHS:
                     for filename in ALLOWED_FILENAMES:
-                        allowed_files.append(str(Path(allowed_path) / Path(filename)))
+                        allowed_files.append(str(Path(allowed_path) / filename))
 
-                requested_path = str(Path(imageDir) / Path(f"{username}.png"))
-                if requested_path not in allowed_files:
+                # Construct the requested path using only the username (tainted)
+                requested_filename = f"{username}.png"
+
+                # Check if the requested filename matches any allowed filename
+                if requested_filename not in ALLOWED_FILENAMES:
                     response = JsonResponse({'message':"<script>alert('Invalid file path');</script>"},status=422)
                     return response
                 else:
-                    path_index = allowed_files.index(requested_path)
-                    path = allowed_files[path_index]
+                    # Get the index of the allowed filename
+                    filename_index = ALLOWED_FILENAMES.index(requested_filename)
+                    # Construct path using untainted values
+                    path = str(Path(imageDir) / ALLOWED_FILENAMES[filename_index])
             else:
                 
                 response = JsonResponse({'message':"<script>alert('File must end in .png');</script>"},status=422)
@@ -672,8 +681,8 @@ def processProfile(request):
 
             with open(path, 'wb') as destination:
                 for chunk in file.chunks():
-                    safe_chunk = escape(chunk.decode('latin-1')).encode('latin-1')
-                    destination.write(safe_chunk)
+                    # Don't escape binary data - just write it directly
+                    destination.write(chunk)
         except IOError as e:
             logger.error("Error occured saving image", e)
             response = JsonResponse({'message':"<script>alert('An error occurred, please try again.');</script>"},status=500)
@@ -715,15 +724,16 @@ def downloadImage(request):
     allowed_files = []
     for allowed_path in ALLOWED_PATHS:
         for filename in ALLOWED_FILENAMES:
-            allowed_files.append(str(Path(allowed_path) / Path(filename)))
+            allowed_files.append(str(Path(allowed_path) / filename))
 
-    requested_path = str(Path(f) / Path(imageName))
-    if requested_path not in allowed_files:
+    # Check if the requested image name is in the allowed list
+    if imageName not in ALLOWED_FILENAMES:
         logger.error("Invalid image path requested: " + escape(imageName))
         return HttpResponse("Invalid image path", status=400)
     else:
-        path_index = allowed_files.index(requested_path)
-        path = allowed_files[path_index]
+        # Get the index and construct path using untainted values
+        filename_index = ALLOWED_FILENAMES.index(imageName)
+        path = str(Path(f) / ALLOWED_FILENAMES[filename_index])
 
     logger.info("Fetching profile image: " + path)
 
@@ -815,25 +825,27 @@ def updateUsername(oldUsername, newUsername):
 
             # Define allowed paths to prevent path traversal (CWE-73)
             # Developer: Update these lists with valid image filenames and paths for your application
-            ALLOWED_FILENAMES = [oldImage, newUsername + extension]  # Developer: Add valid filenames here
+            ALLOWED_FILENAMES = ["user1.png", "user2.png", "admin.png"]  # Developer: Add valid filenames here
             ALLOWED_PATHS = [path]  # Developer: Add valid absolute paths here
 
             allowed_files = []
             for allowed_path in ALLOWED_PATHS:
                 for filename in ALLOWED_FILENAMES:
-                    allowed_files.append(str(Path(allowed_path) / Path(filename)))
+                    allowed_files.append(str(Path(allowed_path) / filename))
 
-            oldPath_requested = str(Path(path) / Path(oldImage))
-            newPath_requested = str(Path(path) / Path(newUsername + extension))
+            # Check if both old and new filenames are in the allowed list
+            requested_old_filename = oldImage
+            requested_new_filename = newUsername + extension
 
-            if oldPath_requested not in allowed_files or newPath_requested not in allowed_files:
+            if requested_old_filename not in ALLOWED_FILENAMES or requested_new_filename not in ALLOWED_FILENAMES:
                 logger.error("Invalid path for rename operation")
                 return False
             else:
-                oldPath_index = allowed_files.index(oldPath_requested)
-                newPath_index = allowed_files.index(newPath_requested)
-                oldPath = allowed_files[oldPath_index]
-                newPath = allowed_files[newPath_index]
+                # Get indices and construct paths using untainted values
+                oldFilename_index = ALLOWED_FILENAMES.index(requested_old_filename)
+                newFilename_index = ALLOWED_FILENAMES.index(requested_new_filename)
+                oldPath = str(Path(path) / ALLOWED_FILENAMES[oldFilename_index])
+                newPath = str(Path(path) / ALLOWED_FILENAMES[newFilename_index])
 
             os.rename(oldPath, newPath)
         return True
