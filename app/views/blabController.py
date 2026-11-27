@@ -288,6 +288,17 @@ def blabbers(request):
         # Use allowlisted value or default
         safe_sort = allowed_sorts.get(sort, "blab_name ASC")
 
+        # Map to column and direction for safe SQL construction
+        sort_mapping = {
+            "blab_name ASC": ("blab_name", "ASC"),
+            "blab_name DESC": ("blab_name", "DESC"),
+            "username ASC": ("username", "ASC"),
+            "username DESC": ("username", "DESC"),
+            "created_at ASC": ("created_at", "ASC"),
+            "created_at DESC": ("created_at", "DESC")
+        }
+        sort_column, sort_direction = sort_mapping[safe_sort]
+
         response = redirect('feed')
         logger.info("Showing Blabbers")
 
@@ -298,73 +309,26 @@ def blabbers(request):
         
         logger.info("User is Logged In - continuing... UA=" + request.headers["User-Agent"] + " U=" + username)
 
-        # Build SQL query based on allowlisted sort option
-        # Execute query directly with static SQL string to prevent SQL injection
+        # Build SQL query with parameterized values
+        # ORDER BY uses allowlisted column and direction
         try:
             logger.info("Creating database connection")
             with connection.cursor() as cursor:
                 logger.info("Executing query to see Blab details")
 
-                if safe_sort == "blab_name DESC":
-                    cursor.execute(
-                        "SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY blab_name DESC;",
-                        (username, username)
-                    )
-                elif safe_sort == "username ASC":
-                    cursor.execute(
-                        "SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY username ASC;",
-                        (username, username)
-                    )
-                elif safe_sort == "username DESC":
-                    cursor.execute(
-                        "SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY username DESC;",
-                        (username, username)
-                    )
-                elif safe_sort == "created_at ASC":
-                    cursor.execute(
-                        "SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY created_at ASC;",
-                        (username, username)
-                    )
-                elif safe_sort == "created_at DESC":
-                    cursor.execute(
-                        "SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY created_at DESC;",
-                        (username, username)
-                    )
-                else:  # default: blab_name ASC
-                    cursor.execute(
-                        "SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY blab_name ASC;",
-                        (username, username)
-                    )
+                # Use parameterized query with safe ORDER BY from allowlist
+                base_query = (
+                    "SELECT users.username, users.blab_name, users.created_at,"
+                    " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                    " SUM(iif(listeners.status='Active',1,0)) as listening"
+                    " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                    " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                    " GROUP BY users.username ORDER BY {} {};"
+                )
+
+                # Format with allowlisted column and direction (not user input)
+                query = base_query.format(sort_column, sort_direction)
+                cursor.execute(query, (username, username))
 
                 blabbersResults = cursor.fetchall()
 
