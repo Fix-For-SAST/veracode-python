@@ -57,9 +57,13 @@ def ping(host):
         logger.warning(f"Host name too long: {host}")
         return "Error: Host name too long"
 
-    logger.info("Pinging " + host)
+    # Use shlex.quote() to safely escape the host parameter
+    safe_host = shlex.quote(host)
+
+    logger.info("Pinging " + safe_host)
     try:
-        result = subprocess.run(['ping', '-c', '1', host],
+        # Use list format with shell=False to prevent command injection
+        result = subprocess.run(['ping', '-c', '1', safe_host],
                                stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE,
                                timeout=5,
@@ -90,8 +94,11 @@ def fortune(file):
         return RiddleData()
     elif file in SAFE_FILES:
         # This branch handles any additional safe files in the allow-list
+        # Use shlex.quote() to safely escape the file parameter
+        safe_file = shlex.quote(file)
         try:
-            result = subprocess.run(['cat', file],
+            # Use list format with shell=False to prevent command injection
+            result = subprocess.run(['cat', safe_file],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE,
                                    check=False,

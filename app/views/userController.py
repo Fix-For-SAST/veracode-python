@@ -191,13 +191,15 @@ def showPasswordHint(request):
 
                 logger.info(f"Password: {password}")
 
-                formatString = "Username '" + escape(username) + "' has password: {}"
-                masked_password = password[:2] + ("*" * (len(password) - 2))
-                hint = formatString.format(escape(masked_password))
+                # Escape password from database before using it
+                safe_password = escape(password)
+                masked_password = safe_password[:2] + ("*" * (len(safe_password) - 2))
+                hint = f"Username '{escape(username)}' has password: {masked_password}"
                 logger.info(hint)
                 return HttpResponse(hint)
             else:
-                return HttpResponse("No password found for " + escape(username))
+                safe_username = escape(username)
+                return HttpResponse(f"No password found for {safe_username}")
     except DatabaseError as db_err:
             logger.error("Database error", db_err)
             return HttpResponse("ERROR!") 
@@ -721,12 +723,14 @@ def downloadImage(request):
         if os.path.exists(path):
             with open(path, 'rb') as file:
                 mime_type = mimetypes.guess_type(path)[0]
-                if mime_type is None:
+                # Force MIME type to be an image type or octet-stream for security
+                if mime_type is None or not mime_type.startswith('image/'):
                     mime_type = "application/octet-stream"
                 logger.info("MIME type: " + mime_type)
                 # Properly quote filename for Content-Disposition header
+                # Use attachment to prevent inline rendering and XSS
                 response = HttpResponse(file.read(), content_type=mime_type)
-                response.headers['Content-Disposition'] = f'attachment; filename="{safe_imageName}"'
+                response.headers['Content-Disposition'] = f'attachment; filename="{escape(safe_imageName)}"'
                 return response
     except ValueError as ve:
             logger.error("Security Error", ve)
