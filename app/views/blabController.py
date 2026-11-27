@@ -152,6 +152,7 @@ def morefeed(request):
         redirect('feed')
 
     username = request.session.get('username')
+    ret = ""
 
     try :
         logger.info("Creating the Database connection")
@@ -160,7 +161,6 @@ def morefeed(request):
             logger.info("Executing query to see more Blabs")
             cursor.execute(sqlBlabsForMe, (username, len, cnt))
             results = cursor.fetchall()
-            ret = ""
             for blab in results:
                 ret += template.format(username = escape(blab[0]), content = escape(blab[2]), blab_name = escape(blab[1]),
                                        timestamp = escape(blab[3].strftime("%b %d %Y")), blabid = escape(str(blab[5])), count = escape(str(blab[4])))
@@ -299,56 +299,73 @@ def blabbers(request):
         logger.info("User is Logged In - continuing... UA=" + request.headers["User-Agent"] + " U=" + username)
 
         # Build SQL query based on allowlisted sort option
-        if safe_sort == "blab_name DESC":
-            blabbersSql = ("SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY blab_name DESC;")
-        elif safe_sort == "username ASC":
-            blabbersSql = ("SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY username ASC;")
-        elif safe_sort == "username DESC":
-            blabbersSql = ("SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY username DESC;")
-        elif safe_sort == "created_at ASC":
-            blabbersSql = ("SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY created_at ASC;")
-        elif safe_sort == "created_at DESC":
-            blabbersSql = ("SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY created_at DESC;")
-        else:  # default: blab_name ASC
-            blabbersSql = ("SELECT users.username, users.blab_name, users.created_at,"
-                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
-                        " SUM(iif(listeners.status='Active',1,0)) as listening"
-                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
-                        " GROUP BY users.username ORDER BY blab_name ASC;")
-
+        # Execute query directly with static SQL string to prevent SQL injection
         try:
             logger.info("Creating database connection")
             with connection.cursor() as cursor:
-
-                logger.info(blabbersSql)
                 logger.info("Executing query to see Blab details")
-                cursor.execute(blabbersSql, (username, username))
+
+                if safe_sort == "blab_name DESC":
+                    cursor.execute(
+                        "SELECT users.username, users.blab_name, users.created_at,"
+                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                        " SUM(iif(listeners.status='Active',1,0)) as listening"
+                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                        " GROUP BY users.username ORDER BY blab_name DESC;",
+                        (username, username)
+                    )
+                elif safe_sort == "username ASC":
+                    cursor.execute(
+                        "SELECT users.username, users.blab_name, users.created_at,"
+                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                        " SUM(iif(listeners.status='Active',1,0)) as listening"
+                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                        " GROUP BY users.username ORDER BY username ASC;",
+                        (username, username)
+                    )
+                elif safe_sort == "username DESC":
+                    cursor.execute(
+                        "SELECT users.username, users.blab_name, users.created_at,"
+                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                        " SUM(iif(listeners.status='Active',1,0)) as listening"
+                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                        " GROUP BY users.username ORDER BY username DESC;",
+                        (username, username)
+                    )
+                elif safe_sort == "created_at ASC":
+                    cursor.execute(
+                        "SELECT users.username, users.blab_name, users.created_at,"
+                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                        " SUM(iif(listeners.status='Active',1,0)) as listening"
+                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                        " GROUP BY users.username ORDER BY created_at ASC;",
+                        (username, username)
+                    )
+                elif safe_sort == "created_at DESC":
+                    cursor.execute(
+                        "SELECT users.username, users.blab_name, users.created_at,"
+                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                        " SUM(iif(listeners.status='Active',1,0)) as listening"
+                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                        " GROUP BY users.username ORDER BY created_at DESC;",
+                        (username, username)
+                    )
+                else:  # default: blab_name ASC
+                    cursor.execute(
+                        "SELECT users.username, users.blab_name, users.created_at,"
+                        " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
+                        " SUM(iif(listeners.status='Active',1,0)) as listening"
+                        " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
+                        " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)"
+                        " GROUP BY users.username ORDER BY blab_name ASC;",
+                        (username, username)
+                    )
+
                 blabbersResults = cursor.fetchall()
 
                 blabbers = []

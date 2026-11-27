@@ -176,6 +176,8 @@ def showPasswordHint(request):
     if (username is None or not username):
         return HttpResponse("No username provided, please type in your username first")
     
+    # Escape username immediately after receiving it
+    safe_username = escape(username)
     logger.info("Entering password-hint with username: " + username)
 
     try:
@@ -194,11 +196,10 @@ def showPasswordHint(request):
                 # Escape password from database before using it
                 safe_password = escape(password)
                 masked_password = safe_password[:2] + ("*" * (len(safe_password) - 2))
-                hint = f"Username '{escape(username)}' has password: {masked_password}"
+                hint = f"Username '{safe_username}' has password: {masked_password}"
                 logger.info(hint)
                 return HttpResponse(hint)
             else:
-                safe_username = escape(username)
                 return HttpResponse(f"No password found for {safe_username}")
     except DatabaseError as db_err:
             logger.error("Database error", db_err)
@@ -552,9 +553,10 @@ def processProfile(request):
     #TODO: Experiment with safe=False on JsonResponse, send in non-dict objects for serialization
     # Initial response only get returns if everything else succeeds.
     # This must be here in order to use set_cookie later in the program
-    safe_username = escape(username.lower())
-    safe_realName = escape(realName)
-    safe_blabName = escape(blabName)
+    # Escape user inputs immediately to prevent XSS
+    safe_username = escape(username.lower() if username else '')
+    safe_realName = escape(realName if realName else '')
+    safe_blabName = escape(blabName if blabName else '')
     msg = f"Successfully changed values! username: {safe_username}, Real Name: {safe_realName}, Blab Name: {safe_blabName}"
     response = JsonResponse({'values':{"username": safe_username, "realName": safe_realName, "blabName": safe_blabName}, 'message':msg},status=200)
     
@@ -656,7 +658,7 @@ def processProfile(request):
 
                 candidate_path = str(Path(imageDir) / f"{username}.png")
                 if candidate_path not in ALLOWED_PATHS:
-                    raise ValueError(f'Invalid username for image upload: {username}')
+                    raise ValueError(f'Invalid username for image upload: {safe_username}')
                 else:
                     path_index = ALLOWED_PATHS.index(candidate_path)
                     path = ALLOWED_PATHS[path_index]
@@ -700,6 +702,9 @@ def downloadImage(request):
         return redirect('/login?target=profile')
     logger.info("User is Logged In - continuing... UA=" + request.headers["User-Agent"] + " U=" + username)
 
+    # Escape imageName immediately to prevent XSS
+    safe_imageName_input = escape(imageName) if imageName else ''
+
     f = image_dir
 
     # Define allowed image files to prevent path traversal (CWE-73)
@@ -711,7 +716,7 @@ def downloadImage(request):
             allowed_files.append(f"{uname}{ext}")
 
     if imageName not in allowed_files:
-        raise ValueError(f'Invalid image name: {imageName}')
+        raise ValueError(f'Invalid image name: {safe_imageName_input}')
     else:
         image_index = allowed_files.index(imageName)
         safe_imageName = allowed_files[image_index]
