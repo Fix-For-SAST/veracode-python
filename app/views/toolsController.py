@@ -2,7 +2,8 @@
 import logging
 import subprocess
 import os
-
+import shlex
+from html import escape
 
 from django.shortcuts import render
 from app.fortune.fortuneData import FortuneData, RiddleData
@@ -27,26 +28,51 @@ def showTools(request):
 def processTools(request):
     host = request.POST.get('host')
     fortunefile = request.POST.get('fortunefile')
-    request.file = fortune(fortunefile) if fortunefile else ""
-    request.host = host
-    request.ping = ping(host) if host else ""
     
+    # Get raw outputs
+    file_output = fortune(fortunefile) if fortunefile else ""
+    ping_output = ping(host) if host else ""
     
+    # Escape all user-controlled data before setting on request object
+    request.file = escape(file_output)
+    request.host = escape(host) if host else ""
+    request.ping = escape(ping_output)
 
-    return render(request, 'app/tools.html', {"host" : host})
+    return render(request, 'app/tools.html', {})
 
 # pings selected host and outputs the result
 def ping(host):
+    import re
     output = ""
-    logger.info("Pinging " + host)
+
+    # Validate host format: allow only valid IP addresses and hostnames
+    # IP address pattern: digits and dots
+    # Hostname pattern: alphanumeric, dots, hyphens
+    if not re.match(r'^[a-zA-Z0-9.-]+$', host):
+        logger.warning(f"Invalid host format: {host}")
+        return "Error: Invalid host format"
+
+    # Additional validation: prevent command injection attempts
+    if len(host) > 253:  # Max hostname length
+        logger.warning(f"Host name too long: {host}")
+        return "Error: Host name too long"
+
+    # Use shlex.quote() to safely escape the host parameter
+    safe_host = shlex.quote(host)
+
+    logger.info("Pinging " + safe_host)
     try:
-        p = subprocess.Popen(['ping', '-c', '1', host], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Use list format with shell=False to prevent command injection
+        result = subprocess.run(['ping', '-c', '1', safe_host],
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE,
+                               timeout=5,
+                               check=False,
+                               shell=False)
         
-        stdout, stderr = p.communicate(timeout=5)
-    
-        output = stdout.decode() if stdout else ""
+        output = result.stdout.decode() if result.stdout else ""
         logger.info(output)
-        logger.info("Exit Code:", p.returncode)
+        logger.info("Exit Code:", result.returncode)
     except subprocess.TimeoutExpired:
         logger.error("Ping timed out")
         output = "ping: unknown host " + host
@@ -59,13 +85,33 @@ def ping(host):
 
 # Produces a fortune based on the submitted selection
 def fortune(file):
-    if file=='fortunes':
+    # Allow-list validation: only allow specific safe files
+    SAFE_FILES = {'fortunes', 'riddles'}
+
+    if file == 'fortunes':
         return FortuneData()
     elif file == 'riddles':
         return RiddleData()
-    # OS Command Injection CWE-78
+    elif file in SAFE_FILES:
+        # This branch handles any additional safe files in the allow-list
+        # Use shlex.quote() to safely escape the file parameter
+        safe_file = shlex.quote(file)
+        try:
+            # Use list format with shell=False to prevent command injection
+            result = subprocess.run(['cat', safe_file],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   check=False,
+                                   shell=False,
+                                   timeout=5)
+            return result.stdout.decode() if result.stdout else ""
+        except Exception as e:
+            logger.error(f"Error reading file: {e}")
+            return "Error reading file"
     else:
-        os.system(f'cat {file}')
+        # File not in allow-list
+        logger.warning(f"Attempted to access unauthorized file: {file}")
+        return "Error: File not allowed"
    
         
 
