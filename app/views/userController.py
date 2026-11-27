@@ -193,10 +193,10 @@ def showPasswordHint(request):
 
                 logger.info(f"Password: {password}")
 
-                # Escape password from database before using it
-                safe_password = escape(password)
-                masked_password = safe_password[:2] + ("*" * (len(safe_password) - 2))
-                hint = f"Username '{safe_username}' has password: {masked_password}"
+                # Mask password first, then escape to prevent XSS
+                masked_password = password[:2] + ("*" * (len(password) - 2))
+                safe_masked_password = escape(masked_password)
+                hint = f"Username '{safe_username}' has password: {safe_masked_password}"
                 logger.info(hint)
                 return HttpResponse(hint)
             else:
@@ -553,7 +553,8 @@ def processProfile(request):
     #TODO: Experiment with safe=False on JsonResponse, send in non-dict objects for serialization
     # Initial response only get returns if everything else succeeds.
     # This must be here in order to use set_cookie later in the program
-    # Escape user inputs immediately to prevent XSS
+    # Escape user inputs to prevent XSS if JSON is later rendered in HTML
+    # Django's JsonResponse also handles JSON encoding automatically
     safe_username = escape(username.lower() if username else '')
     safe_realName = escape(realName if realName else '')
     safe_blabName = escape(blabName if blabName else '')
@@ -652,13 +653,21 @@ def processProfile(request):
             #Potential VULN? ending with .png, having different file type
             extension = file.name.lower().endswith('.png')
             if extension:
+                # Validate that the file is a PNG image by checking magic bytes
+                file.seek(0)
+                magic_bytes = file.read(8)
+                if magic_bytes != b'\x89PNG\r\n\x1a\n':
+                    response = JsonResponse({'message':"Invalid PNG file - file content does not match PNG format"},status=422)
+                    return response
+                file.seek(0)  # Reset file pointer for writing
+
                 # Define allowed paths to prevent path traversal (CWE-73)
                 ALLOWED_USERNAMES = ["user1", "user2", "user3", "admin", "testuser"]  # TODO: Update with valid usernames
                 ALLOWED_PATHS = [str(Path(imageDir) / f"{uname}.png") for uname in ALLOWED_USERNAMES]
 
                 candidate_path = str(Path(imageDir) / f"{username}.png")
                 if candidate_path not in ALLOWED_PATHS:
-                    raise ValueError(f'Invalid username for image upload: {safe_username}')
+                    raise ValueError(f'Invalid username for image upload: {escape(username)}')
                 else:
                     path_index = ALLOWED_PATHS.index(candidate_path)
                     path = ALLOWED_PATHS[path_index]
@@ -735,7 +744,8 @@ def downloadImage(request):
                 # Properly quote filename for Content-Disposition header
                 # Use attachment to prevent inline rendering and XSS
                 response = HttpResponse(file.read(), content_type=mime_type)
-                response.headers['Content-Disposition'] = f'attachment; filename="{escape(safe_imageName)}"'
+                # safe_imageName is already validated against allowed list, no escaping needed
+                response.headers['Content-Disposition'] = f'attachment; filename="{safe_imageName}"'
                 return response
     except ValueError as ve:
             logger.error("Security Error", ve)
