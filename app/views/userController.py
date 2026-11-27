@@ -192,7 +192,8 @@ def showPasswordHint(request):
                 logger.info(f"Password: {password}")
 
                 formatString = "Username '" + escape(username) + "' has password: {}"
-                hint = formatString.format(password[:2] + ("*" * (len(password) - 2)))
+                masked_password = password[:2] + ("*" * (len(password) - 2))
+                hint = formatString.format(escape(masked_password))
                 logger.info(hint)
                 return HttpResponse(hint)
             else:
@@ -552,7 +553,7 @@ def processProfile(request):
     safe_username = escape(username.lower())
     safe_realName = escape(realName)
     safe_blabName = escape(blabName)
-    msg = f"<script>alert('Successfully changed values!\\nusername: {safe_username}\\nReal Name: {safe_realName}\\nBlab Name: {safe_blabName}');</script>"
+    msg = f"Successfully changed values! username: {safe_username}, Real Name: {safe_realName}, Blab Name: {safe_blabName}"
     response = JsonResponse({'values':{"username": safe_username, "realName": safe_realName, "blabName": safe_blabName}, 'message':msg},status=200)
     
     logger.info("entering processProfile")
@@ -561,7 +562,7 @@ def processProfile(request):
     # Ensure user is logged in
     if not sessionUsername:
         logger.info("User is not Logged In = redirecting...")
-        response = JsonResponse({'message':"<script>alert('Error - please login');</script>"},status=403)
+        response = JsonResponse({'message':"Error - please login"},status=403)
         #response.status_code = 403
         return response
         #TODO: Resolve request/response status and ensure same funcitonality
@@ -586,19 +587,19 @@ def processProfile(request):
             if updateResult:
                 # failure
                 
-                response = JsonResponse({'message':"<script>alert('An error occurred, please try again.');</script>"},status=500)
+                response = JsonResponse({'message':"An error occurred, please try again."},status=500)
                 #response.status_code = 500
                 return response
     except sqlite3.IntegrityError as e:
         logger.error(e.sqlite_errorcode, e.sqlite_errorname)
-        response = JsonResponse({'message':"<script>alert('An Database error occurred, please try again.');</script>"},status=500)
+        response = JsonResponse({'message':"An Database error occurred, please try again."},status=500)
         #response.status_code = 500
         return response
     except sqlite3.Error as ex :
         logger.error(ex.sqlite_errorcode, ex.sqlite_errorname)
     except Exception as e:
         logger.error("Unexpected error", e)
-        response = JsonResponse({'message':"<script>alert('An error occurred, please try again.');</script>"},status=500)
+        response = JsonResponse({'message':"An error occurred, please try again."},status=500)
         #response.status_code = 500
         return response
 
@@ -607,13 +608,13 @@ def processProfile(request):
         
         if usernameExists(username):
             
-            response = JsonResponse({'message':"<script>alert('That username already exists. Please try another.');</script>"},status=409)
+            response = JsonResponse({'message':"That username already exists. Please try another."},status=409)
             #response.status_code = 409
             return response
 
         if not updateUsername(oldUsername, username):
             
-            response = JsonResponse({'message':"<script>alert('An error occurred, please try again.');</script>"},status=500)
+            response = JsonResponse({'message':"An error occurred, please try again."},status=500)
             #response.status_code = 500
             return response
         
@@ -659,7 +660,7 @@ def processProfile(request):
                     path = ALLOWED_PATHS[path_index]
             else:
                 
-                response = JsonResponse({'message':"<script>alert('File must end in .png');</script>"},status=422)
+                response = JsonResponse({'message':"File must end in .png"},status=422)
                 return response
             logger.info("Saving new profile image: " + path)
 
@@ -668,7 +669,7 @@ def processProfile(request):
                     destination.write(chunk)
         except IOError as e:
             logger.error("Error occured saving image", e)
-            response = JsonResponse({'message':"<script>alert('An error occurred, please try again.');</script>"},status=500)
+            response = JsonResponse({'message':"An error occurred, please try again."},status=500)
             #response.status_code = 500
             return response
         
@@ -723,9 +724,9 @@ def downloadImage(request):
                 if mime_type is None:
                     mime_type = "application/octet-stream"
                 logger.info("MIME type: " + mime_type)
-                safe_imageName_escaped = escape(safe_imageName)
+                # Properly quote filename for Content-Disposition header
                 response = HttpResponse(file.read(), content_type=mime_type)
-                response.headers['Content-Disposition'] = 'attachment; filename=' + safe_imageName_escaped
+                response.headers['Content-Disposition'] = f'attachment; filename="{safe_imageName}"'
                 return response
     except ValueError as ve:
             logger.error("Security Error", ve)

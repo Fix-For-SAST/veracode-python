@@ -28,18 +28,35 @@ def showTools(request):
 def processTools(request):
     host = request.POST.get('host')
     fortunefile = request.POST.get('fortunefile')
-    request.file = fortune(fortunefile) if fortunefile else ""
-    request.host = host
-    request.ping = ping(host) if host else ""
     
+    # Get raw outputs
+    file_output = fortune(fortunefile) if fortunefile else ""
+    ping_output = ping(host) if host else ""
     
+    # Escape all user-controlled data before setting on request object
+    request.file = escape(file_output)
+    request.host = escape(host) if host else ""
+    request.ping = escape(ping_output)
 
-    safe_host = escape(host) if host else ""
-    return render(request, 'app/tools.html', {"host" : safe_host})
+    return render(request, 'app/tools.html', {})
 
 # pings selected host and outputs the result
 def ping(host):
+    import re
     output = ""
+
+    # Validate host format: allow only valid IP addresses and hostnames
+    # IP address pattern: digits and dots
+    # Hostname pattern: alphanumeric, dots, hyphens
+    if not re.match(r'^[a-zA-Z0-9.-]+$', host):
+        logger.warning(f"Invalid host format: {host}")
+        return "Error: Invalid host format"
+
+    # Additional validation: prevent command injection attempts
+    if len(host) > 253:  # Max hostname length
+        logger.warning(f"Host name too long: {host}")
+        return "Error: Host name too long"
+
     logger.info("Pinging " + host)
     try:
         result = subprocess.run(['ping', '-c', '1', host],
@@ -64,18 +81,15 @@ def ping(host):
 
 # Produces a fortune based on the submitted selection
 def fortune(file):
-    if file=='fortunes':
+    # Allow-list validation: only allow specific safe files
+    SAFE_FILES = {'fortunes', 'riddles'}
+
+    if file == 'fortunes':
         return FortuneData()
     elif file == 'riddles':
         return RiddleData()
-    # Fixed: OS Command Injection CWE-78
-    else:
-        # Allow-list validation: only allow specific safe files
-        SAFE_FILES = {'fortunes', 'riddles', 'quotes', 'jokes'}
-        if file not in SAFE_FILES:
-            logger.warning(f"Attempted to access unauthorized file: {file}")
-            return "Error: File not allowed"
-
+    elif file in SAFE_FILES:
+        # This branch handles any additional safe files in the allow-list
         try:
             result = subprocess.run(['cat', file],
                                    stdout=subprocess.PIPE,
@@ -87,6 +101,10 @@ def fortune(file):
         except Exception as e:
             logger.error(f"Error reading file: {e}")
             return "Error reading file"
+    else:
+        # File not in allow-list
+        logger.warning(f"Attempted to access unauthorized file: {file}")
+        return "Error: File not allowed"
    
         
 
