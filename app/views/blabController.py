@@ -163,7 +163,7 @@ def morefeed(request):
             ret = ""
             for blab in results:
                 ret += template.format(username = escape(blab[0]), content = escape(blab[2]), blab_name = escape(blab[1]),
-                                       timestamp = blab[3].strftime("%b %d %Y"), blabid = blab[5], count = blab[4])    
+                                       timestamp = blab[3].strftime("%b %d %Y"), blabid = escape(str(blab[5])), count = escape(str(blab[4])))
     except ConnectionError as ce:
         logger.error("Unexpected connection error", ce)
     except Exception as e:
@@ -274,6 +274,20 @@ def blabbers(request):
         sort = request.GET.get('sort')
         if (sort is None or not sort):
             sort = "blab_name ASC"
+
+        # Allowlist for sort parameter to prevent SQL injection
+        allowed_sorts = {
+            "blab_name ASC": "blab_name ASC",
+            "blab_name DESC": "blab_name DESC",
+            "username ASC": "username ASC",
+            "username DESC": "username DESC",
+            "created_at ASC": "created_at ASC",
+            "created_at DESC": "created_at DESC"
+        }
+
+        # Use allowlisted value or default
+        safe_sort = allowed_sorts.get(sort, "blab_name ASC")
+
         response = redirect('feed')
         logger.info("Showing Blabbers")
 
@@ -288,7 +302,7 @@ def blabbers(request):
                     " SUM(iif(listeners.listener=%s, 1, 0)) as listeners,"
                     " SUM(iif(listeners.status='Active',1,0)) as listening"
                     " FROM users LEFT JOIN listeners ON users.username = listeners.blabber"
-                    " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)" + " GROUP BY users.username" + " ORDER BY " + sort + ";")
+                    " WHERE users.username NOT IN (\"admin\",\"admin-totp\",%s)" + " GROUP BY users.username" + " ORDER BY " + safe_sort + ";")
 
         try:
             logger.info("Creating database connection")
@@ -343,8 +357,20 @@ def blabbers(request):
         try:
             logger.info("Creating database connection")
             with connection.cursor() as cursor:
-                module = command.capitalize()[:-1] + "Command"
-                cmdClass = eval(module)
+                # Safe mapping to prevent code injection via eval()
+                command_map = {
+                    "listen": ListenCommand,
+                    "ignore": IgnoreCommand,
+                    "blabber": BlabberCommand
+                }
+
+                # Get the command class from the safe mapping
+                cmdClass = command_map.get(command.lower())
+
+                if cmdClass is None:
+                    logger.error("Invalid command: " + command)
+                    return redirect('blabbers')
+
                 cmdObj = cmdClass(cursor, username)
                 cmdObj.execute(blabberUsername)
                 return redirect('blabbers')       
